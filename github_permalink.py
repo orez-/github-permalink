@@ -1,17 +1,44 @@
 import argparse
+import json
 import re
+import shutil
+import subprocess
+import sys
 
 import dateparser
 import requests
 
 
-def fetch_commits_before(repo, timestamp):
-    response = requests.get(
-        f'https://api.github.com/search/commits?q=committer-date:<{timestamp}+repo:{repo}&sort=committer-date',
-        headers={"Accept": "application/vnd.github.cloak-preview"},
-    )
-    response.raise_for_status()
+def _fetch_commits_before_hub(url):
+    try:
+        result = subprocess.run(
+            ['hub', 'api', url, '-H', 'Accept: application/vnd.github.cloak-preview'],
+            check=True,
+            capture_output=True,
+            encoding='utf8',
+        )
+    except subprocess.CalledProcessError as exc:
+        print(exc.stdout)
+        print(exc.stderr)
+        sys.exit(1)
+    return json.loads(result.stdout)
+
+
+def _fetch_commits_before_api(url):
+    response = requests.get(url, headers={"Accept": "application/vnd.github.cloak-preview"})
+    try:
+        response.raise_for_status()
+    except Exception:
+        print(response.text)
+        sys.exit(1)
     return response.json()
+
+
+def fetch_commits_before(repo, timestamp):
+    url = f'https://api.github.com/search/commits?q=committer-date:<{timestamp}+repo:{repo}&sort=committer-date'
+    if shutil.which('hub'):
+        return _fetch_commits_before_hub(url)
+    return _fetch_commits_before_api(url)
 
 
 def get_commit_hash_before(repo, timestamp):
